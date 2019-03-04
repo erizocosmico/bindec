@@ -113,6 +113,7 @@ In a future version, `bindec` will support adding validations to the fields duri
 
 ### Roadmap
 
+- [ ] Document how each type is represented exactly.
 - [ ] Possibly modify signature so encoders take a `io.Writer` and decoders take a `io.Reader`.
 - [ ] Add tests to ensure generated code works as expected.
 - [ ] Handle and error on cyclic structures.
