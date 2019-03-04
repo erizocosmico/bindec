@@ -5,8 +5,6 @@ import (
 	"encoding/gob"
 	"fmt"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 var input = Foo{
@@ -31,60 +29,80 @@ func init() {
 
 func BenchmarkEncode(b *testing.B) {
 	b.Run("bindec", func(b *testing.B) {
-		require := require.New(b)
 		for i := 0; i < b.N; i++ {
 			_, err := input.EncodeBinary()
-			require.NoError(err)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 
 	b.Run("gob", func(b *testing.B) {
-		require := require.New(b)
 		for i := 0; i < b.N; i++ {
 			var buf bytes.Buffer
 			err := gob.NewEncoder(&buf).Encode(input)
-			require.NoError(err)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
 
 func BenchmarkDecode(b *testing.B) {
 	bindecEncoded, err := input.EncodeBinary()
-	require.NoError(b, err)
+	if err != nil {
+		b.Fatal(err)
+	}
 
 	var buf bytes.Buffer
-	require.NoError(b, gob.NewEncoder(&buf).Encode(input))
+	err = gob.NewEncoder(&buf).Encode(input)
+	if err != nil {
+		b.Fatal(err)
+	}
 	gobEncoded := buf.Bytes()
 
 	b.Run("bindec", func(b *testing.B) {
-		require := require.New(b)
 		for i := 0; i < b.N; i++ {
 			var out Foo
 			err := out.DecodeBinary(bindecEncoded)
-			require.NoError(err)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 
 	b.Run("gob", func(b *testing.B) {
-		require := require.New(b)
 		for i := 0; i < b.N; i++ {
 			var out Foo
 			err := gob.NewDecoder(bytes.NewReader(gobEncoded)).Decode(&out)
-			require.NoError(err)
+			if err != nil {
+				b.Fatal(err)
+			}
 		}
 	})
 }
 
 func TestSize(t *testing.T) {
 	bindecEncoded, err := input.EncodeBinary()
-	require.NoError(t, err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	var buf bytes.Buffer
-	require.NoError(t, gob.NewEncoder(&buf).Encode(input))
+	gob.NewEncoder(&buf).Encode(input)
+	if err != nil {
+		t.Fatal(err)
+	}
 	gobEncoded := buf.Bytes()
 
 	fmt.Println("BINDEC:", len(bindecEncoded), "bytes")
 	fmt.Println("GOB:", len(gobEncoded), "bytes")
 
-	require.True(t, len(bindecEncoded) < len(gobEncoded))
+	if len(bindecEncoded) >= len(gobEncoded) {
+		t.Errorf(
+			"expected bindec (%d bytes) to be smaller than gob (%d bytes)",
+			len(bindecEncoded),
+			len(gobEncoded),
+		)
+	}
 }

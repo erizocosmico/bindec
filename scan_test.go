@@ -3,28 +3,40 @@ package bindec
 import (
 	"go/types"
 	"testing"
-
-	"github.com/stretchr/testify/require"
 )
 
 func TestGetPackage(t *testing.T) {
-	require := require.New(t)
 	pkg, err := getPackage("")
-	require.NoError(err)
-	require.Equal("bindec", pkg.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pkg.Name() != "bindec" {
+		t.Errorf("expected package name to be bindec, is %q", pkg.Name())
+	}
 
 	pkg, err = getPackage("./cmd/bindec")
-	require.NoError(err)
-	require.Equal("main", pkg.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if pkg.Name() != "main" {
+		t.Errorf("expected package name to be main, is %q", pkg.Name())
+	}
 }
 
 func TestFindType(t *testing.T) {
-	require := require.New(t)
 	pkg, err := getPackage("")
-	require.NoError(err)
+	if err != nil {
+		t.Fatal(err)
+	}
 
 	typ, err := findType(pkg, "Options")
-	require.NoError(err)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	_, ok := typ.(*types.Named)
-	require.True(ok)
+	if !ok {
+		t.Errorf("expecting Options to be *types.Named, is %T", typ)
+	}
 }

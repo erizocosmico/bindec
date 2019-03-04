@@ -9,13 +9,9 @@ build_matrix:
   allow_failures:
     - tip
 
-before_install:
-  - go get -t -v ./...
-  - go build ./...
-
 script:
   - go test -cover -coverprofile=coverage.txt -covermode="atomic" . -v
-  - go test -benchmark=. -run=. ./bench
+  - go test -bench=. -run=. ./bench
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)
