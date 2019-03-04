@@ -11,6 +11,7 @@ build_matrix:
 
 before_install:
   - go get -t -v ./...
+  - go build ./...
 
 script:
   - go test -cover -coverprofile=coverage.txt -covermode="atomic" . -v
