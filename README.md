@@ -1,4 +1,4 @@
-# bindec
+# bindec [![Build Status](https://travis-ci.org/erizocosmico/bindec.svg?branch=master)](https://travis-ci.org/erizocosmico/bindec) [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![Go Report Card](https://goreportcard.com/badge/github.com/erizocosmico/bindec)](https://goreportcard.com/report/github.com/erizocosmico/bindec)
 
 `bindec` generates encoders and decoders to encode and decode binary representations of types. Encoders and decoders are code-generated, thus generating code tailored specifically for your type, making encoding and decoding really fast.
 
