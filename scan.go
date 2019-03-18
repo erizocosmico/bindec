@@ -46,7 +46,7 @@ func typeCheck(path string, fset *token.FileSet, files []*ast.File) (*types.Pack
 		IgnoreFuncBodies:         true,
 		FakeImportC:              true,
 		DisableUnusedImportCheck: true,
-		Importer:                 importer.Default(),
+		Importer:                 importer.For("source", nil),
 	}
 
 	return cfg.Check(path, fset, files, nil)

@@ -64,7 +64,7 @@ func BenchmarkDecode(b *testing.B) {
 	b.Run("bindec", func(b *testing.B) {
 		for i := 0; i < b.N; i++ {
 			var out Foo
-			err := out.DecodeBinary(bindecEncoded)
+			err := out.DecodeBinaryFromBytes(bindecEncoded)
 			if err != nil {
 				b.Fatal(err)
 			}

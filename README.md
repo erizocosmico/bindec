@@ -30,7 +30,7 @@ bindec -recv=somerecv -type=SomeType /path/to/package
 
 ### Encode and decode
 
-After generating the code you will have in your package a file `yourtype_bindec.go` with two methods added to the type: `EncodeBinary` and `DecodeBinary`.
+After generating the code you will have in your package a file `yourtype_bindec.go` with four methods added to the type: `EncodeBinary`, `WriteBinary`, `DecodeBinaryFromBytes` and `DecodeBinary`.
 
 ```go
 // This is our type.
@@ -47,7 +47,13 @@ data := getSomeDataFromSomewhere()
 
 var p Person
 // Then we decode the person from the data.
-if err := p.DecodeFromBinary(data); err != nil {
+if err := p.DecodeBinaryFromBytes(data); err != nil {
+    // handle err
+}
+
+// We can even read it from a reader.
+var p2 Person
+if err := p.DecodeBinary(reader); err != nil {
     // handle err
 }
 
@@ -57,7 +63,11 @@ if err != nil {
     // handle err
 }
 
-// use encoded
+// Or write it to a writer.
+writer := bytes.NewBuffer(nil)
+if err := p.WriteBinary(writer); err != nil {
+    // handle err
+}
 ```
 
 ### Ignore fields
@@ -114,9 +124,6 @@ In a future version, `bindec` will support adding validations to the fields duri
 ### Roadmap
 
 - [ ] Document how each type is represented exactly.
-- [ ] Possibly modify signature so encoders take a `io.Writer` and decoders take a `io.Reader`.
-- [ ] Add tests to ensure generated code works as expected.
-- [ ] Handle and error on cyclic structures.
 - [ ] Add validations and constraints via struct tags.
 - [ ] Ensure non-struct type decoders work correctly.
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/format"
 	"go/types"
+	"strings"
 )
 
 // Options to configure generation.
@@ -30,12 +31,18 @@ func Generate(opts Options) ([]byte, error) {
 		return nil, err
 	}
 
-	t, err := parseType(typ)
+	ctx := newParseContext()
+	ctx.addImport("encoding/binary")
+	ctx.addImport("bytes")
+	ctx.addImport("io")
+	ctx.addImport("math")
+
+	t, err := parseType(ctx, typ)
 	if err != nil {
 		return nil, err
 	}
 
-	src := []byte(generateFile(pkg.Name(), opts.Recv, opts.Type, t))
+	src := []byte(generateFile(pkg.Name(), opts.Recv, opts.Type, t, ctx.getImports()))
 	formatted, err := format.Source(src)
 	if err != nil {
 		return nil, fmt.Errorf("error formatting code: %s\n\n%s", err, string(src))
@@ -44,10 +51,27 @@ func Generate(opts Options) ([]byte, error) {
 	return formatted, nil
 }
 
-func generateFile(pkgName, recv, typeName string, typ Type) string {
+func generateFile(
+	pkgName, recv, typeName string,
+	typ Type,
+	imports []string,
+) string {
 	encoder := typ.Encoder(recv)
 	decoder := typ.Decoder(recv)
-	return fmt.Sprintf(fileTpl, pkgName, recv, typeName, encoder, decoder)
+	var deps = make([]string, len(imports))
+	for i, x := range imports {
+		deps[i] = fmt.Sprintf("%q", x)
+	}
+
+	return fmt.Sprintf(
+		fileTpl,
+		pkgName,
+		recv,
+		typeName,
+		encoder,
+		decoder,
+		strings.Join(deps, "\n"),
+	)
 }
 
 const fileTpl = `
@@ -56,10 +80,7 @@ const fileTpl = `
 package %[1]s
 
 import (
-	"bytes"
-	"encoding/binary"
-	"io"
-	"math"
+	%[6]s
 )
 
 var _ = binary.LittleEndian
@@ -68,13 +89,29 @@ var _ = math.Abs
 // EncodeBinary returns a binary-encoded representation of the type.
 func (%[2]s %[3]s) EncodeBinary() ([]byte, error) {
 	var writer = bytes.NewBuffer(nil)
-	%[4]s
+	if err := %[2]s.WriteBinary(writer); err != nil {
+		return nil, err
+	}
 	return writer.Bytes(), nil
 }
 
-// DecodeBinary fills the type with the given binary-encoded representation of the type.
-func (%[2]s %[3]s) DecodeBinary(data []byte) error {
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (%[2]s %[3]s) WriteBinary(writer io.Writer) error {
+	%[4]s
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (%[2]s *%[3]s) DecodeBinaryFromBytes(data []byte) error {
 	var reader = bytes.NewReader(data)
+	return %[2]s.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (%[2]s *%[3]s) DecodeBinary(reader io.Reader) error {
 	%[5]s
 	return nil
 }
@@ -162,7 +199,13 @@ const (
 		return err
 	}
 
-	b := make([]byte, int(binary.LittleEndian.Uint64(sz)))
+	ux := binary.LittleEndian.Uint64(sz)
+	x := int64(ux >> 1)
+	if ux&1 != 0 {
+		x = ^x
+	}
+
+	b := make([]byte, int(x))
 	if _, err := io.ReadFull(reader, b); err != nil {
 		return err
 	}
@@ -173,16 +216,21 @@ const (
 
 	writeString = `
 {
-	var sz = make([]byte, 8)
 	v := %s
-	binary.LittleEndian.PutUint64(sz, uint64(len(v)))
+	len := len(v)
+	ux := uint64(len) << 1
+	if len < 0 {
+		ux = ^ux
+	}
+	sz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(sz, ux)
 	if _, err := writer.Write(sz); err != nil {
-		return nil, err
+		return err
 	}
 
 	_, err := writer.Write([]byte(v))
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -206,7 +254,7 @@ const (
 	}
 	_, err := writer.Write([]byte{v})
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -248,7 +296,7 @@ const (
 		binary.LittleEndian.PutUint64(bs, uint64(x))
 		_, err := writer.Write(bs)
 		if err != nil {
-			return nil, err
+			return err
 		}
 	}
 `
@@ -280,7 +328,7 @@ const (
 	binary.LittleEndian.PutUint64(bs, ux)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -304,7 +352,7 @@ const (
 	binary.LittleEndian.PutUint64(bs, x)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -328,7 +376,7 @@ const (
 	binary.LittleEndian.PutUint64(bs, x)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -360,7 +408,7 @@ const (
 	binary.LittleEndian.PutUint32(bs, ux)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -384,7 +432,7 @@ const (
 	binary.LittleEndian.PutUint32(bs, x)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -416,7 +464,7 @@ const (
 	binary.LittleEndian.PutUint16(bs, ux)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -436,11 +484,11 @@ const (
 	writeUint16 = `
 {
 	x := %s
-	bs := make([]byte, 8)
+	bs := make([]byte, 2)
 	binary.LittleEndian.PutUint16(bs, x)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -470,7 +518,7 @@ const (
 	}
 	_, err := writer.Write([]byte{ux})
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -487,8 +535,8 @@ const (
 
 	writeByte = `
 {
-	_, err := writer.Write([]byte{%s}); err != nil {
-		return nil, err
+	if _, err := writer.Write([]byte{%s}); err != nil {
+		return err
 	}
 }
 `
@@ -510,7 +558,7 @@ const (
 	binary.LittleEndian.PutUint32(bs, math.Float32bits(%s))
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -532,7 +580,7 @@ const (
 	binary.LittleEndian.PutUint64(bs, math.Float64bits(%s))
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `
@@ -544,7 +592,13 @@ const (
 		return err
 	}
 
-	b := make([]byte, int(binary.LittleEndian.Uint64(sz)))
+	ux := binary.LittleEndian.Uint64(sz)
+	x := int64(ux >> 1)
+	if ux&1 != 0 {
+		x = ^x
+	}
+
+	b := make([]byte, int(x))
 	if _, err := io.ReadFull(reader, b); err != nil {
 		return err
 	}
@@ -555,16 +609,21 @@ const (
 
 	writeBytes = `
 {
-	var sz = make([]byte, 8)
 	v := %s
-	binary.LittleEndian.PutUint64(sz, uint64(len(v)))
+	len := len(v)
+	ux := uint64(len) << 1
+	if len < 0 {
+		ux = ^ux
+	}
+	sz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(sz, ux)
 	if _, err := writer.Write(sz); err != nil {
-		return nil, err
+		return err
 	}
 
-	_, err := writer.Write([]byte(v))
+	_, err := writer.Write(v)
 	if err != nil {
-		return nil, err
+		return err
 	}
 }
 `

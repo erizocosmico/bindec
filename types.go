@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"go/types"
 	"reflect"
+	"sort"
 	"strings"
+	"unicode"
 )
 
 // Type can generate decoders and encoders for a given type.
@@ -81,21 +83,22 @@ func (t Maybe) Encoder(recv string) string {
 {
 	if x := %s; x == nil {
 		if _, err := writer.Write([]byte{0}); err != nil {
-			return nil, err
+			return err
 		}
 	} else {
 		if _, err := writer.Write([]byte{1}); err != nil {
-			return nil, err
+			return err
 		}
 
 		%s
 	}
 }
-`, recv, t.Elem.Encoder(recv))
+`, recv, t.Elem.Encoder(fmt.Sprintf("(*%s)", recv)))
 }
 
 // Decoder implements the Type interface.
 func (t Maybe) Decoder(recv string) string {
+	tmpIdent := tmpIdent(recv)
 	return fmt.Sprintf(`
 {
 	var v = make([]byte, 1)
@@ -104,14 +107,14 @@ func (t Maybe) Decoder(recv string) string {
 	}
 
 	if v[0] == 0 {
-		%[1]s = nil
+		%[2]s = nil
 	} else {
-		var tmp_%[1]s %[2]s
-		%[3]s
-		%[1]s = &tmp_%[1]s
+		var %[1]s %[3]s
+		%[4]s
+		%[2]s = &%[1]s
 	}
 }
-`, recv, t.ElemType, t.Elem.Decoder("tmp_"+recv))
+`, tmpIdent, recv, t.ElemType, t.Elem.Decoder(tmpIdent))
 }
 
 // Slice type.
@@ -133,7 +136,7 @@ func (t Slice) Encoder(recv string) string {
 	binary.LittleEndian.PutUint64(bs, ux)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	
 	for i := 0; i < len; i++ %s
@@ -210,7 +213,7 @@ func (t Map) Encoder(recv string) string {
 	binary.LittleEndian.PutUint64(bs, ux)
 	_, err := writer.Write(bs)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	
 	for k, v := range %[1]s {
@@ -303,49 +306,133 @@ func (t Bytes) Decoder(recv string) string {
 	return fmt.Sprintf(readBytes, recv)
 }
 
-func parseType(t types.Type) (Type, error) {
+func typeName(ctx *parseContext, typ types.Type) string {
+	if named, ok := typ.(*types.Named); ok {
+		pkgName := named.Obj().Pkg().Name()
+		pkgPath := named.Obj().Pkg().Path()
+		typeName := named.Obj().Name()
+
+		// If the path of the package starts with a / means it's an absolute
+		// path, so it must be the current package. In that case we need to
+		// ignore the package name in the type name and not import it.
+		// TODO: fix this for windows
+		if !strings.HasPrefix(pkgPath, "/") {
+			ctx.addImport(pkgPath)
+			return pkgName + "." + typeName
+		}
+
+		return typeName
+	}
+
+	return typ.String()
+}
+
+type parseContext struct {
+	imports map[string]struct{}
+	seen    []string
+}
+
+func newParseContext() *parseContext {
+	return &parseContext{make(map[string]struct{}), nil}
+}
+
+func (ctx *parseContext) clone() *parseContext {
+	seen := make([]string, len(ctx.seen))
+	copy(seen, ctx.seen)
+
+	return &parseContext{ctx.imports, seen}
+}
+
+func (ctx *parseContext) markSeen(typ types.Type) {
+	named, ok := typ.(*types.Named)
+	if ok && !stringContains(ctx.seen, named.String()) {
+		ctx.seen = append(ctx.seen, named.String())
+	}
+}
+
+func (ctx *parseContext) isSeen(typ types.Type) bool {
+	named, ok := typ.(*types.Named)
+	if ok && stringContains(ctx.seen, named.String()) {
+		return true
+	}
+	return false
+}
+
+func (ctx *parseContext) addImport(pkg string) {
+	ctx.imports[pkg] = struct{}{}
+}
+
+func (ctx *parseContext) getImports() []string {
+	var result []string
+	for i := range ctx.imports {
+		result = append(result, i)
+	}
+
+	sort.Strings(result)
+	return result
+}
+
+func stringContains(slice []string, str string) bool {
+	for _, s := range slice {
+		if s == str {
+			return true
+		}
+	}
+	return false
+}
+
+func parseType(ctx *parseContext, t types.Type) (Type, error) {
 	switch t := t.(type) {
 	case *types.Named:
-		return parseType(t.Underlying())
+		if ctx.isSeen(t) {
+			return nil, fmt.Errorf("there is a cyclic reference, type %s was already seen", t)
+		}
+
+		ctx.markSeen(t)
+		return parseType(ctx, t.Underlying())
 	case *types.Struct:
-		return parseStruct(t)
+		return parseStruct(ctx, t)
 	case *types.Pointer:
-		elem, err := parseType(t.Elem())
+		elem, err := parseType(ctx, t.Elem())
 		if err != nil {
 			return nil, err
 		}
 
-		return Maybe{t.Elem().String(), elem}, nil
+		return Maybe{typeName(ctx, t.Elem()), elem}, nil
 	case *types.Array:
-		elem, err := parseType(t.Elem())
+		elem, err := parseType(ctx, t.Elem())
 		if err != nil {
 			return nil, err
 		}
 
 		return Array{t.Len(), elem}, nil
 	case *types.Map:
-		key, err := parseType(t.Key())
+		key, err := parseType(ctx.clone(), t.Key())
 		if err != nil {
 			return nil, err
 		}
 
-		elem, err := parseType(t.Elem())
+		elem, err := parseType(ctx.clone(), t.Elem())
 		if err != nil {
 			return nil, err
 		}
 
-		return Map{t.Key().String(), t.Elem().String(), key, elem}, nil
+		return Map{
+			typeName(ctx, t.Key()),
+			typeName(ctx, t.Elem()),
+			key, elem,
+		}, nil
 	case *types.Slice:
 		if t.Elem().String() == "byte" {
 			return Bytes{}, nil
 		}
 
-		elem, err := parseType(t.Elem())
+		elem, err := parseType(ctx, t.Elem())
 		if err != nil {
 			return nil, err
 		}
 
-		return Slice{t.Elem().String(), elem}, nil
+		return Slice{typeName(ctx, t.Elem()), elem}, nil
 	case *types.Basic:
 		switch t.Kind() {
 		case types.String,
@@ -378,7 +465,7 @@ func parseType(t types.Type) (Type, error) {
 	}
 }
 
-func parseStruct(t *types.Struct) (Type, error) {
+func parseStruct(ctx *parseContext, t *types.Struct) (Type, error) {
 	var s Struct
 	for i := 0; i < t.NumFields(); i++ {
 		f := t.Field(i)
@@ -391,7 +478,7 @@ func parseStruct(t *types.Struct) (Type, error) {
 			continue
 		}
 
-		ft, err := parseType(f.Type())
+		ft, err := parseType(ctx.clone(), f.Type())
 		if err != nil {
 			return nil, fmt.Errorf("on field %s: %s", f.Name(), err)
 		}
@@ -423,4 +510,16 @@ func parseTag(tag string) (*fieldConfig, error) {
 	}
 
 	return &cfg, nil
+}
+
+func tmpIdent(recv string) string {
+	var runes []rune
+	for _, ru := range recv {
+		if unicode.IsDigit(ru) || unicode.IsLetter(ru) || ru == '_' {
+			runes = append(runes, ru)
+		} else {
+			runes = append(runes, '_')
+		}
+	}
+	return "tmp_" + string(runes)
 }

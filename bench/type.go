@@ -2,6 +2,7 @@ package bench
 
 //go:generate bindec -type=Foo
 
+// Foo is the type to be benchmarked.
 type Foo struct {
 	A int
 	B string

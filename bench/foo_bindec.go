@@ -15,6 +15,15 @@ var _ = math.Abs
 // EncodeBinary returns a binary-encoded representation of the type.
 func (t Foo) EncodeBinary() ([]byte, error) {
 	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t Foo) WriteBinary(writer io.Writer) error {
 	{
 
 		{
@@ -27,35 +36,45 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 			binary.LittleEndian.PutUint64(bs, ux)
 			_, err := writer.Write(bs)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 
 		{
-			var sz = make([]byte, 8)
 			v := t.B
-			binary.LittleEndian.PutUint64(sz, uint64(len(v)))
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
 			if _, err := writer.Write(sz); err != nil {
-				return nil, err
+				return err
 			}
 
 			_, err := writer.Write([]byte(v))
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 
 		{
-			var sz = make([]byte, 8)
 			v := t.C
-			binary.LittleEndian.PutUint64(sz, uint64(len(v)))
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
 			if _, err := writer.Write(sz); err != nil {
-				return nil, err
+				return err
 			}
 
-			_, err := writer.Write([]byte(v))
+			_, err := writer.Write(v)
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 		{
@@ -66,21 +85,26 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 				binary.LittleEndian.PutUint64(bs, x)
 				_, err := writer.Write(bs)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 
 			{
-				var sz = make([]byte, 8)
 				v := t.D.B
-				binary.LittleEndian.PutUint64(sz, uint64(len(v)))
+				len := len(v)
+				ux := uint64(len) << 1
+				if len < 0 {
+					ux = ^ux
+				}
+				sz := make([]byte, 8)
+				binary.LittleEndian.PutUint64(sz, ux)
 				if _, err := writer.Write(sz); err != nil {
-					return nil, err
+					return err
 				}
 
 				_, err := writer.Write([]byte(v))
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 		}
@@ -95,7 +119,7 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 			binary.LittleEndian.PutUint64(bs, ux)
 			_, err := writer.Write(bs)
 			if err != nil {
-				return nil, err
+				return err
 			}
 
 			for i := 0; i < len; i++ {
@@ -108,7 +132,7 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 				binary.LittleEndian.PutUint64(bs, ux)
 				_, err := writer.Write(bs)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 		}
@@ -124,7 +148,7 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 				binary.LittleEndian.PutUint64(bs, ux)
 				_, err := writer.Write(bs)
 				if err != nil {
-					return nil, err
+					return err
 				}
 			}
 		}
@@ -136,17 +160,24 @@ func (t Foo) EncodeBinary() ([]byte, error) {
 			}
 			_, err := writer.Write([]byte{v})
 			if err != nil {
-				return nil, err
+				return err
 			}
 		}
 	}
 
-	return writer.Bytes(), nil
+	return nil
 }
 
-// DecodeBinary fills the type with the given binary-encoded representation of the type.
-func (t Foo) DecodeBinary(data []byte) error {
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *Foo) DecodeBinaryFromBytes(data []byte) error {
 	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *Foo) DecodeBinary(reader io.Reader) error {
 	{
 
 		{
@@ -169,7 +200,13 @@ func (t Foo) DecodeBinary(data []byte) error {
 				return err
 			}
 
-			b := make([]byte, int(binary.LittleEndian.Uint64(sz)))
+			ux := binary.LittleEndian.Uint64(sz)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			b := make([]byte, int(x))
 			if _, err := io.ReadFull(reader, b); err != nil {
 				return err
 			}
@@ -183,7 +220,13 @@ func (t Foo) DecodeBinary(data []byte) error {
 				return err
 			}
 
-			b := make([]byte, int(binary.LittleEndian.Uint64(sz)))
+			ux := binary.LittleEndian.Uint64(sz)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			b := make([]byte, int(x))
 			if _, err := io.ReadFull(reader, b); err != nil {
 				return err
 			}
@@ -208,7 +251,13 @@ func (t Foo) DecodeBinary(data []byte) error {
 					return err
 				}
 
-				b := make([]byte, int(binary.LittleEndian.Uint64(sz)))
+				ux := binary.LittleEndian.Uint64(sz)
+				x := int64(ux >> 1)
+				if ux&1 != 0 {
+					x = ^x
+				}
+
+				b := make([]byte, int(x))
 				if _, err := io.ReadFull(reader, b); err != nil {
 					return err
 				}

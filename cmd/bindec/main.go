@@ -12,9 +12,10 @@ import (
 
 func main() {
 	var fs flag.FlagSet
-	var recv, path, typ string
+	var recv, path, typ, output string
 	fs.StringVar(&recv, "recv", "t", "Name given to the receiver type on the generated methods.")
 	fs.StringVar(&typ, "type", "", "Type to generate encoder and decoder for.")
+	fs.StringVar(&output, "o", "", "Generated file name, by default TYPE_bindec.go.")
 	fs.Parse(os.Args[1:])
 
 	if typ == "" {
@@ -42,7 +43,12 @@ func main() {
 	})
 	assert(err)
 
-	f, err := os.Create(filepath.Join(path, filename))
+	file := output
+	if file == "" {
+		file = filepath.Join(path, filename)
+	}
+
+	f, err := os.Create(file)
 	assert(err)
 
 	_, err = f.Write(content)

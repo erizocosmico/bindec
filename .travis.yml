@@ -10,8 +10,8 @@ build_matrix:
     - tip
 
 script:
-  - go test -cover -coverprofile=coverage.txt -covermode="atomic" . -v
-  - go test -bench=. -run=. ./bench
+  - make test
+  - make bench
 
 after_success:
 - bash <(curl -s https://codecov.io/bash)
