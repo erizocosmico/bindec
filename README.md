@@ -28,6 +28,18 @@ You can also generate a encoders and decoders for a type from a package that is 
 bindec -recv=somerecv -type=SomeType /path/to/package
 ```
 
+If you want to generate encoders and decoders for more than one file and output them in the same file, you can do so passing comma-separated types.
+
+```
+bindec -type=FirstType,SecondType,ThirdType
+```
+
+If you give them receiver names, you must give them in the same order as the types are passed, also comma-separated.
+
+```
+bindec -recv=a,b,c -type=A,B,C
+```
+
 ### Encode and decode
 
 After generating the code you will have in your package a file `yourtype_bindec.go` with four methods added to the type: `EncodeBinary`, `WriteBinary`, `DecodeBinaryFromBytes` and `DecodeBinary`.
@@ -116,6 +128,18 @@ It's slower, takes more space and requires registering every single type that's 
 
 In a future version, `bindec` will support adding validations to the fields during decoding via struct tags, which will allow things like "accept only 100 bytes on this field so an atacker can't send as many bytes as they want" to be performed automatically.
 
+### Supported types
+
+- Integers: byte, int, uint, uint64, ...
+- Floats: float32, float64
+- Strings
+- Maps with keys and values of supported types
+- Pointers
+- Structs (without cyclic references) with fields of supported types
+- Arrays of supported types
+- Slices of supported types
+- Booleans
+
 ### Limitations
 
 - Interface, function and channel types are not supported. The reason interfaces are not supported is because they can be anything, potentially even from any package, on runtime and bindec decoders and encoders are generated beforehand.
@@ -128,7 +152,6 @@ For more details about the format used to encode the types, see [SPEC.md](/SPEC.
 ### Roadmap
 
 - [ ] Add validations and constraints via struct tags.
-- [ ] Ensure non-struct type decoders work correctly.
 
 ### LICENSE
 

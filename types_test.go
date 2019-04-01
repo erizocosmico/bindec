@@ -1,5 +1,34 @@
 package bindec
 
+//go:generate ./bindec_bin -type=StructTestType,MapTestType,ArrayTestType,SliceTestType,ByteTestType,Uint16TestType,Uint32TestType,Uint64TestType,UintTestType,Int8TestType,Int16TestType,Int32TestType,Int64TestType,IntTestType,UintptrTestType,Float32TestType,Float64TestType,StringTestType,BytesTestType,BoolTestType -o bindec_test.go
+
+type (
+	MapTestType   map[byte]uint16
+	SliceTestType []uint16
+	ArrayTestType [2]byte
+
+	ByteTestType    byte
+	Uint16TestType  uint16
+	Uint32TestType  uint32
+	Uint64TestType  uint64
+	UintptrTestType uintptr
+	UintTestType    uint
+
+	Int8TestType  int8
+	Int16TestType int16
+	Int32TestType int32
+	Int64TestType int64
+	IntTestType   int
+
+	Float32TestType float32
+	Float64TestType float64
+
+	StringTestType string
+	BytesTestType  []byte
+
+	BoolTestType bool
+)
+
 type Struct2 struct {
 	Field1  int
 	Flield2 string

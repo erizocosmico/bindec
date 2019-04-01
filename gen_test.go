@@ -16,7 +16,11 @@ func TestGenerate(t *testing.T) {
 		t.Errorf("unexpected error: %s", err)
 	}
 
-	data, err := Generate(Options{Path: path, Type: "StructTestType", Recv: "t"})
+	data, err := Generate(Options{
+		Path:  path,
+		Types: []string{"StructTestType"},
+		Recvs: []string{"t"},
+	})
 	if err != nil {
 		t.Errorf("unexpected error: %s", err)
 	}
@@ -45,7 +49,11 @@ func TestGenerateCyclic(t *testing.T) {
 		t.Errorf("unexpected error: %s", err)
 	}
 
-	_, err = Generate(Options{Path: path, Type: "StructCyclic", Recv: "t"})
+	_, err = Generate(Options{
+		Path:  path,
+		Types: []string{"StructCyclic"},
+		Recvs: []string{"t"},
+	})
 	if err == nil {
 		t.Errorf("expected error")
 	}

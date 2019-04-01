@@ -13,8 +13,8 @@ import (
 func main() {
 	var fs flag.FlagSet
 	var recv, path, typ, output string
-	fs.StringVar(&recv, "recv", "t", "Name given to the receiver type on the generated methods.")
-	fs.StringVar(&typ, "type", "", "Type to generate encoder and decoder for.")
+	fs.StringVar(&recv, "recv", "t", "Name given to the receiver type on the generated methods. For multiple types, separate with commas e.g. -recv=t,x,c.")
+	fs.StringVar(&typ, "type", "", "Type/s to generate encoder and decoder for. Separate with commas for more than one e.g. -type=A,B,C.")
 	fs.StringVar(&output, "o", "", "Generated file name, by default TYPE_bindec.go.")
 	fs.Parse(os.Args[1:])
 
@@ -35,11 +35,28 @@ func main() {
 		assert(err)
 	}
 
-	filename := strings.ToLower(typ) + "_bindec.go"
+	recvs := strings.Split(recv, ",")
+	types := strings.Split(typ, ",")
+
+	if len(recvs) == 0 || recv == "t" {
+		recvs = make([]string, len(types))
+		for i := range types {
+			recvs[i] = "t"
+		}
+	}
+
+	if len(recvs) != len(types) {
+		assert(fmt.Errorf(
+			"got %d receivers, but %d types to generate",
+			len(recvs), len(types),
+		))
+	}
+
+	filename := strings.ToLower(strings.Join(types, "_")) + "_bindec.go"
 	content, err := bindec.Generate(bindec.Options{
-		Path: path,
-		Recv: recv,
-		Type: typ,
+		Path:  path,
+		Recvs: recvs,
+		Types: types,
 	})
 	assert(err)
 

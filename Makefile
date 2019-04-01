@@ -8,8 +8,8 @@ generate-bench: bindec_bin
 	./bindec_bin -type=Foo bench
 
 generate-test: bindec_bin
-	rm -f struct_test.go
-	./bindec_bin -type=StructTestType -o struct_test.go
+	rm -f bindec_test.go
+	go generate .
 
 test: generate-test
 	go test -cover -coverprofile=coverage.txt -covermode="atomic" . -v

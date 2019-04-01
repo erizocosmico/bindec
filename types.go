@@ -14,7 +14,9 @@ import (
 type Type interface {
 	// Decoder generates a decoder for the type. recv is the variable or
 	// struct field the data will be decoded into.
-	Decoder(recv string) string
+	// If root is true, it means the decoder is being generated for a recv
+	// itself.
+	Decoder(recv string, root bool) string
 	// Encoder generates an encoder for the type. recv is the variable or
 	// struct field that will be encoded.
 	Encoder(recv string) string
@@ -58,17 +60,85 @@ const (
 
 // Basic type.
 type Basic struct {
-	Kind BasicKind
+	TypeName string
+	Kind     BasicKind
 }
 
 // Encoder implements the Type interface.
 func (t Basic) Encoder(recv string) string {
-	return writeBasic(recv, t.Kind)
+	switch t.Kind {
+	case types.String:
+		return fmt.Sprintf(writeString, recv)
+	case types.Bool:
+		return fmt.Sprintf(writeBool, recv)
+	case types.Int:
+		return fmt.Sprintf(writeInt, recv)
+	case types.Int8:
+		return fmt.Sprintf(writeInt8, recv)
+	case types.Int16:
+		return fmt.Sprintf(writeInt16, recv)
+	case types.Int32:
+		return fmt.Sprintf(writeInt32, recv)
+	case types.Int64:
+		return fmt.Sprintf(writeInt64, recv)
+	case types.Uint:
+		return fmt.Sprintf(writeUint, recv)
+	case types.Uint8:
+		return fmt.Sprintf(writeByte, recv)
+	case types.Uint16:
+		return fmt.Sprintf(writeUint16, recv)
+	case types.Uint32:
+		return fmt.Sprintf(writeUint32, recv)
+	case types.Uint64:
+		return fmt.Sprintf(writeUint64, recv)
+	case types.Uintptr:
+		return fmt.Sprintf(writeUintptr, recv)
+	case types.Float32:
+		return fmt.Sprintf(writeFloat32, recv)
+	case types.Float64:
+		return fmt.Sprintf(writeFloat64, recv)
+	default:
+		return ""
+	}
 }
 
 // Decoder implements the Type interface.
-func (t Basic) Decoder(recv string) string {
-	return readBasic(recv, t.Kind)
+func (t Basic) Decoder(recv string, root bool) string {
+	prefix := recvPrefix(root)
+	switch t.Kind {
+	case types.String:
+		return fmt.Sprintf(readString, t.TypeName, recv, prefix)
+	case types.Bool:
+		return fmt.Sprintf(readBool, t.TypeName, recv, prefix)
+	case types.Int:
+		return fmt.Sprintf(readInt, t.TypeName, recv, prefix)
+	case types.Int8:
+		return fmt.Sprintf(readInt8, t.TypeName, recv, prefix)
+	case types.Int16:
+		return fmt.Sprintf(readInt16, t.TypeName, recv, prefix)
+	case types.Int32:
+		return fmt.Sprintf(readInt32, t.TypeName, recv, prefix)
+	case types.Int64:
+		return fmt.Sprintf(readInt64, t.TypeName, recv, prefix)
+	case types.Uint:
+		return fmt.Sprintf(readUint, t.TypeName, recv, prefix)
+	case types.Uint8:
+		return fmt.Sprintf(readByte, t.TypeName, recv, prefix)
+	case types.Uint16:
+		return fmt.Sprintf(readUint16, t.TypeName, recv, prefix)
+	case types.Uint32:
+		return fmt.Sprintf(readUint32, t.TypeName, recv, prefix)
+	case types.Uint64:
+		return fmt.Sprintf(readUint64, t.TypeName, recv, prefix)
+	case types.Uintptr:
+		return fmt.Sprintf(readUintptr, t.TypeName, recv, prefix)
+	case types.Float32:
+		return fmt.Sprintf(readFloat32, t.TypeName, recv, prefix)
+	case types.Float64:
+		return fmt.Sprintf(readFloat64, t.TypeName, recv, prefix)
+	default:
+		return ""
+	}
 }
 
 // Maybe is a type whose value can not be present.
@@ -97,7 +167,7 @@ func (t Maybe) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Maybe) Decoder(recv string) string {
+func (t Maybe) Decoder(recv string, root bool) string {
 	tmpIdent := tmpIdent(recv)
 	return fmt.Sprintf(`
 {
@@ -114,12 +184,12 @@ func (t Maybe) Decoder(recv string) string {
 		%[2]s = &%[1]s
 	}
 }
-`, tmpIdent, recv, t.ElemType, t.Elem.Decoder(tmpIdent))
+`, tmpIdent, recv, t.ElemType, t.Elem.Decoder(tmpIdent, false))
 }
 
 // Slice type.
 type Slice struct {
-	ElemType string
+	TypeName string
 	Elem     Type
 }
 
@@ -145,7 +215,7 @@ func (t Slice) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Slice) Decoder(recv string) string {
+func (t Slice) Decoder(recv string, root bool) string {
 	return fmt.Sprintf(`
 {
 	var bs = make([]byte, 8)
@@ -161,11 +231,19 @@ func (t Slice) Decoder(recv string) string {
 
 	len := int(x)
 
-	%s = make([]%s, len)
+	%[1]s%[2]s = make(%[3]s, len)
 
-	for i := 0; i < len; i++ %s
+	for i := 0; i < len; i++ %[4]s
 }
-`, recv, t.ElemType, strings.TrimSpace(t.Elem.Decoder(recv+"[i]")))
+`,
+		recvPrefix(root),
+		recv,
+		t.TypeName,
+		strings.TrimSpace(t.Elem.Decoder(
+			fmt.Sprintf("(%s%s)[i]", recvPrefix(root), recv),
+			false,
+		)),
+	)
 }
 
 // Array type of fixed size.
@@ -184,20 +262,22 @@ func (t Array) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Array) Decoder(recv string) string {
+func (t Array) Decoder(recv string, root bool) string {
 	return fmt.Sprintf(`
 {
 	for i := 0; i < %d; i++ %s
 }
-`, t.Len, strings.TrimSpace(t.Elem.Decoder(recv+"[i]")))
+`, t.Len, strings.TrimSpace(t.Elem.Decoder(
+		fmt.Sprintf("(%s%s)[i]", recvPrefix(root), recv),
+		false,
+	)))
 }
 
 // Map type.
 type Map struct {
-	KeyType  string
-	ElemType string
-	Key      Type
-	Elem     Type
+	TypeName, KeyType, ElemType string
+	Key                         Type
+	Elem                        Type
 }
 
 // Encoder implements the Type interface.
@@ -225,7 +305,7 @@ func (t Map) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Map) Decoder(recv string) string {
+func (t Map) Decoder(recv string, root bool) string {
 	return fmt.Sprintf(`
 {
 	var bs = make([]byte, 8)
@@ -241,22 +321,25 @@ func (t Map) Decoder(recv string) string {
 
 	len := int(x)
 
-	%[1]s = make(map[%[2]s]%[3]s, len)
+	%[7]s%[1]s = make(%[2]s, len)
 
 	for i := 0; i < len; i++ {
-		var key %[2]s
-		var value %[3]s
-		%[4]s
+		var key %[3]s
+		var value %[4]s
 		%[5]s
-		%[1]s[key] = value
+		%[6]s
+		(%[7]s%[1]s)[key] = value
 	}
 }
 `,
 		recv,
+		t.TypeName,
 		t.KeyType,
 		t.ElemType,
-		t.Key.Decoder("key"),
-		t.Elem.Decoder("value"))
+		t.Key.Decoder("key", false),
+		t.Elem.Decoder("value", false),
+		recvPrefix(root),
+	)
 }
 
 // Struct type.
@@ -276,11 +359,11 @@ func (t Struct) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Struct) Decoder(recv string) string {
+func (t Struct) Decoder(recv string, root bool) string {
 	var buf bytes.Buffer
 	buf.WriteString("{\n")
 	for _, f := range t.Fields {
-		buf.WriteString(f.Type.Decoder(recv + "." + f.Name))
+		buf.WriteString(f.Type.Decoder(recv+"."+f.Name, false))
 	}
 	buf.WriteString("}\n")
 	return buf.String()
@@ -294,7 +377,9 @@ type StructField struct {
 }
 
 // Bytes is a special type for []byte.
-type Bytes struct{}
+type Bytes struct {
+	TypeName string
+}
 
 // Encoder implements the Type interface.
 func (t Bytes) Encoder(recv string) string {
@@ -302,8 +387,8 @@ func (t Bytes) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Bytes) Decoder(recv string) string {
-	return fmt.Sprintf(readBytes, recv)
+func (t Bytes) Decoder(recv string, root bool) string {
+	return fmt.Sprintf(readBytes, recv, t.TypeName, recvPrefix(root))
 }
 
 func typeName(ctx *parseContext, typ types.Type) string {
@@ -389,7 +474,12 @@ func parseType(ctx *parseContext, t types.Type) (Type, error) {
 		}
 
 		ctx.markSeen(t)
-		return parseType(ctx, t.Underlying())
+		typ, err := parseType(ctx, t.Underlying())
+		if err != nil {
+			return nil, err
+		}
+
+		return replaceTypeName(typ, typeName(ctx, t)), nil
 	case *types.Struct:
 		return parseStruct(ctx, t)
 	case *types.Pointer:
@@ -398,7 +488,10 @@ func parseType(ctx *parseContext, t types.Type) (Type, error) {
 			return nil, err
 		}
 
-		return Maybe{typeName(ctx, t.Elem()), elem}, nil
+		return Maybe{
+			typeName(ctx, t.Elem()),
+			elem,
+		}, nil
 	case *types.Array:
 		elem, err := parseType(ctx, t.Elem())
 		if err != nil {
@@ -418,13 +511,16 @@ func parseType(ctx *parseContext, t types.Type) (Type, error) {
 		}
 
 		return Map{
-			typeName(ctx, t.Key()),
-			typeName(ctx, t.Elem()),
-			key, elem,
+			TypeName: typeName(ctx, t),
+			KeyType:  typeName(ctx, t.Key()),
+			ElemType: typeName(ctx, t.Elem()),
+			Key:      key,
+			Elem:     elem,
 		}, nil
 	case *types.Slice:
+		tn := typeName(ctx, t)
 		if t.Elem().String() == "byte" {
-			return Bytes{}, nil
+			return Bytes{tn}, nil
 		}
 
 		elem, err := parseType(ctx, t.Elem())
@@ -432,7 +528,7 @@ func parseType(ctx *parseContext, t types.Type) (Type, error) {
 			return nil, err
 		}
 
-		return Slice{typeName(ctx, t.Elem()), elem}, nil
+		return Slice{tn, elem}, nil
 	case *types.Basic:
 		switch t.Kind() {
 		case types.String,
@@ -450,7 +546,7 @@ func parseType(ctx *parseContext, t types.Type) (Type, error) {
 			types.Uintptr,
 			types.Float32,
 			types.Float64:
-			return Basic{t.Kind()}, nil
+			return Basic{typeName(ctx, t), t.Kind()}, nil
 		default:
 			return nil, fmt.Errorf("type contains a basic type which cannot be serialized (unsafe pointer or complex number)")
 		}
@@ -522,4 +618,30 @@ func tmpIdent(recv string) string {
 		}
 	}
 	return "tmp_" + string(runes)
+}
+
+func recvPrefix(root bool) string {
+	if root {
+		return "*"
+	}
+	return ""
+}
+
+func replaceTypeName(t Type, name string) Type {
+	switch t := t.(type) {
+	case Slice:
+		t.TypeName = name
+		return t
+	case Map:
+		t.TypeName = name
+		return t
+	case Basic:
+		t.TypeName = name
+		return t
+	case Bytes:
+		t.TypeName = name
+		return t
+	default:
+		return t
+	}
 }
