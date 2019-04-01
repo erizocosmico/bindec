@@ -36,6 +36,7 @@ func TestEncodeDecode(t *testing.T) {
 		}{6, "foo"},
 		NamedStruct:   Struct2{4, "bar"},
 		StructPointer: &Struct2{8, "baz"},
+		Ignored:       42,
 	}
 
 	output, err := input.EncodeBinary()
@@ -48,5 +49,10 @@ func TestEncodeDecode(t *testing.T) {
 		t.Errorf("unexpected error decoding: %s", err)
 	}
 
+	if result.Ignored != 0 {
+		t.Errorf("expected Ignored field to be 0")
+	}
+
+	input.Ignored = 0 // just to be able to equal them
 	require.Equal(t, input, result)
 }

@@ -32,6 +32,7 @@ type StructTestType struct {
 	}
 	NamedStruct   Struct2
 	StructPointer *Struct2
+	Ignored       int `bindec:"-"`
 }
 
 const typeTestDefs = `
@@ -67,6 +68,7 @@ type StructTestType struct {
 	}
 	NamedStruct   Struct2
 	StructPointer *Struct2
+	Ignored int ` + "`bindec:\"-\"`" + `
 }
 `
 
