@@ -121,9 +121,12 @@ In a future version, `bindec` will support adding validations to the fields duri
 - Interface, function and channel types are not supported. The reason interfaces are not supported is because they can be anything, potentially even from any package, on runtime and bindec decoders and encoders are generated beforehand.
 - Cyclic structures are not supported.
 
+### Specification
+
+For more details about the format used to encode the types, see [SPEC.md](/SPEC.md).
+
 ### Roadmap
 
-- [ ] Document how each type is represented exactly.
 - [ ] Add validations and constraints via struct tags.
 - [ ] Ensure non-struct type decoders work correctly.
 
