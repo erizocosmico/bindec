@@ -15,7 +15,7 @@ test: generate-test
 	go test -cover -coverprofile=coverage.txt -covermode="atomic" . -v
 
 bench: generate-bench
-	go test -bench=. -run=. ./bench
+	go test -bench=./bench
 
 clean:
 	rm -f bindec_bin
