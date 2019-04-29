@@ -5,12 +5,24 @@ package bindec
 import (
 	"bytes"
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math"
+	"net"
+	"net/url"
+	"regexp"
+	"strings"
+	"unicode"
 )
 
 var _ = binary.LittleEndian
 var _ = math.Abs
+
+var base64ConstraintRegex = regexp.MustCompile("^(?:[A-Za-z0-9+\\/]{4})*(?:[A-Za-z0-9+\\/]{2}==|[A-Za-z0-9+\\/]{3}=|[A-Za-z0-9+\\/]{4})$")
+var emailConstraintRegex = regexp.MustCompile("^(?:(?:(?:(?:[a-zA-Z]|\\d|[!#\\$%&'\\*\\+\\-\\/=\\?\\^_`{\\|}~]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])+(?:\\.([a-zA-Z]|\\d|[!#\\$%&'\\*\\+\\-\\/=\\?\\^_`{\\|}~]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])+)*)|(?:(?:\\x22)(?:(?:(?:(?:\\x20|\\x09)*(?:\\x0d\\x0a))?(?:\\x20|\\x09)+)?(?:(?:[\\x01-\\x08\\x0b\\x0c\\x0e-\\x1f\\x7f]|\\x21|[\\x23-\\x5b]|[\\x5d-\\x7e]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])|(?:(?:[\\x01-\\x09\\x0b\\x0c\\x0d-\\x7f]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}]))))*(?:(?:(?:\\x20|\\x09)*(?:\\x0d\\x0a))?(\\x20|\\x09)+)?(?:\\x22))))@(?:(?:(?:[a-zA-Z]|\\d|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])|(?:(?:[a-zA-Z]|\\d|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])(?:[a-zA-Z]|\\d|-|\\.|~|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])*(?:[a-zA-Z]|\\d|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])))\\.)+(?:(?:[a-zA-Z]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])|(?:(?:[a-zA-Z]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])(?:[a-zA-Z]|\\d|-|\\.|~|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])*(?:[a-zA-Z]|[\\x{00A0}-\\x{D7FF}\\x{F900}-\\x{FDCF}\\x{FDF0}-\\x{FFEF}])))\\.?$")
+var hexadecimalConstraintRegex = regexp.MustCompile("^[0-9a-fA-F]+$")
+var numericConstraintRegex = regexp.MustCompile("^[-+]?[0-9]+(?:\\.[0-9]+)?$")
+var uuidConstraintRegex = regexp.MustCompile("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 
 // EncodeBinary returns a binary-encoded representation of the type.
 func (t StructTestType) EncodeBinary() ([]byte, error) {
@@ -452,6 +464,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 			t.Int8 = int8(x)
+
 		}
 
 		{
@@ -466,6 +479,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 			t.Int16 = int16(x)
+
 		}
 
 		{
@@ -480,6 +494,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 			t.Int32 = int32(x)
+
 		}
 
 		{
@@ -494,6 +509,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 			t.Int64 = int64(x)
+
 		}
 
 		{
@@ -508,6 +524,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 			t.Int = int(x)
+
 		}
 
 		{
@@ -516,6 +533,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				return err
 			}
 			t.Byte = byte(bs[0])
+
 		}
 
 		{
@@ -524,6 +542,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				return err
 			}
 			t.Uint8 = uint8(bs[0])
+
 		}
 
 		{
@@ -534,6 +553,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 
 			ux := binary.LittleEndian.Uint16(bs)
 			t.Uint16 = uint16(ux)
+
 		}
 
 		{
@@ -544,6 +564,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 
 			ux := binary.LittleEndian.Uint32(bs)
 			t.Uint32 = uint32(ux)
+
 		}
 
 		{
@@ -554,6 +575,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 
 			ux := binary.LittleEndian.Uint64(bs)
 			t.Uint64 = uint64(ux)
+
 		}
 
 		{
@@ -564,26 +586,30 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 
 			ux := binary.LittleEndian.Uint64(bs)
 			t.Uint = uint(ux)
+
 		}
 
 		{
-			var sz = make([]byte, 8)
-			if _, err := io.ReadFull(reader, sz); err != nil {
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
 				return err
 			}
 
-			ux := binary.LittleEndian.Uint64(sz)
+			ux := binary.LittleEndian.Uint64(bs)
 			x := int64(ux >> 1)
 			if ux&1 != 0 {
 				x = ^x
 			}
 
-			b := make([]byte, int(x))
+			sz := int(x)
+
+			b := make([]byte, sz)
 			if _, err := io.ReadFull(reader, b); err != nil {
 				return err
 			}
 
 			t.String = string(b)
+
 		}
 
 		{
@@ -593,6 +619,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 			}
 			ux := binary.LittleEndian.Uint32(bs)
 			t.Float32 = float32(math.Float32frombits(ux))
+
 		}
 
 		{
@@ -602,6 +629,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 			}
 			ux := binary.LittleEndian.Uint64(bs)
 			t.Float64 = float64(math.Float64frombits(ux))
+
 		}
 
 		{
@@ -611,6 +639,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 			}
 
 			t.Bool = bool(v[0] == 1)
+
 		}
 
 		{
@@ -631,6 +660,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					}
 
 					tmp_t_Pointer = bool(v[0] == 1)
+
 				}
 
 				t.Pointer = &tmp_t_Pointer
@@ -655,6 +685,7 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					}
 
 					tmp_t_NilPointer = bool(v[0] == 1)
+
 				}
 
 				t.NilPointer = &tmp_t_NilPointer
@@ -673,11 +704,11 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 				x = ^x
 			}
 
-			len := int(x)
+			sz := int(x)
 
-			t.Slice = make([]int16, len)
+			t.Slice = make([]int16, sz)
 
-			for i := 0; i < len; i++ {
+			for i := 0; i < sz; i++ {
 				var bs = make([]byte, 2)
 				if _, err := io.ReadFull(reader, bs); err != nil {
 					return err
@@ -689,27 +720,32 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					x = ^x
 				}
 				(t.Slice)[i] = int16(x)
+
 			}
+
 		}
 
 		{
-			var sz = make([]byte, 8)
-			if _, err := io.ReadFull(reader, sz); err != nil {
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
 				return err
 			}
 
-			ux := binary.LittleEndian.Uint64(sz)
+			ux := binary.LittleEndian.Uint64(bs)
 			x := int64(ux >> 1)
 			if ux&1 != 0 {
 				x = ^x
 			}
 
-			b := make([]byte, int(x))
+			sz := int(x)
+
+			b := make([]byte, sz)
 			if _, err := io.ReadFull(reader, b); err != nil {
 				return err
 			}
 
 			t.Bytes = []byte(b)
+
 		}
 
 		{
@@ -725,7 +761,9 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					x = ^x
 				}
 				(t.Array)[i] = int16(x)
+
 			}
+
 		}
 		{
 
@@ -741,26 +779,30 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					x = ^x
 				}
 				t.Struct.Field1 = int(x)
+
 			}
 
 			{
-				var sz = make([]byte, 8)
-				if _, err := io.ReadFull(reader, sz); err != nil {
+				var bs = make([]byte, 8)
+				if _, err := io.ReadFull(reader, bs); err != nil {
 					return err
 				}
 
-				ux := binary.LittleEndian.Uint64(sz)
+				ux := binary.LittleEndian.Uint64(bs)
 				x := int64(ux >> 1)
 				if ux&1 != 0 {
 					x = ^x
 				}
 
-				b := make([]byte, int(x))
+				sz := int(x)
+
+				b := make([]byte, sz)
 				if _, err := io.ReadFull(reader, b); err != nil {
 					return err
 				}
 
 				t.Struct.Flield2 = string(b)
+
 			}
 		}
 		{
@@ -777,26 +819,30 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 					x = ^x
 				}
 				t.NamedStruct.Field1 = int(x)
+
 			}
 
 			{
-				var sz = make([]byte, 8)
-				if _, err := io.ReadFull(reader, sz); err != nil {
+				var bs = make([]byte, 8)
+				if _, err := io.ReadFull(reader, bs); err != nil {
 					return err
 				}
 
-				ux := binary.LittleEndian.Uint64(sz)
+				ux := binary.LittleEndian.Uint64(bs)
 				x := int64(ux >> 1)
 				if ux&1 != 0 {
 					x = ^x
 				}
 
-				b := make([]byte, int(x))
+				sz := int(x)
+
+				b := make([]byte, sz)
 				if _, err := io.ReadFull(reader, b); err != nil {
 					return err
 				}
 
 				t.NamedStruct.Flield2 = string(b)
+
 			}
 		}
 
@@ -824,26 +870,30 @@ func (t *StructTestType) DecodeBinary(reader io.Reader) error {
 							x = ^x
 						}
 						tmp_t_StructPointer.Field1 = int(x)
+
 					}
 
 					{
-						var sz = make([]byte, 8)
-						if _, err := io.ReadFull(reader, sz); err != nil {
+						var bs = make([]byte, 8)
+						if _, err := io.ReadFull(reader, bs); err != nil {
 							return err
 						}
 
-						ux := binary.LittleEndian.Uint64(sz)
+						ux := binary.LittleEndian.Uint64(bs)
 						x := int64(ux >> 1)
 						if ux&1 != 0 {
 							x = ^x
 						}
 
-						b := make([]byte, int(x))
+						sz := int(x)
+
+						b := make([]byte, sz)
 						if _, err := io.ReadFull(reader, b); err != nil {
 							return err
 						}
 
 						tmp_t_StructPointer.Flield2 = string(b)
+
 					}
 				}
 
@@ -928,11 +978,11 @@ func (t *MapTestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 
-		len := int(x)
+		sz := int(x)
 
-		*t = make(MapTestType, len)
+		*t = make(MapTestType, sz)
 
-		for i := 0; i < len; i++ {
+		for i := 0; i < sz; i++ {
 			var key byte
 			var value uint16
 
@@ -942,6 +992,7 @@ func (t *MapTestType) DecodeBinary(reader io.Reader) error {
 					return err
 				}
 				key = byte(bs[0])
+
 			}
 
 			{
@@ -952,10 +1003,12 @@ func (t *MapTestType) DecodeBinary(reader io.Reader) error {
 
 				ux := binary.LittleEndian.Uint16(bs)
 				value = uint16(ux)
+
 			}
 
 			(*t)[key] = value
 		}
+
 	}
 
 	return nil
@@ -1003,7 +1056,9 @@ func (t *ArrayTestType) DecodeBinary(reader io.Reader) error {
 				return err
 			}
 			(*t)[i] = byte(bs[0])
+
 		}
+
 	}
 
 	return nil
@@ -1072,11 +1127,11 @@ func (t *SliceTestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 
-		len := int(x)
+		sz := int(x)
 
-		*t = make(SliceTestType, len)
+		*t = make(SliceTestType, sz)
 
-		for i := 0; i < len; i++ {
+		for i := 0; i < sz; i++ {
 			var bs = make([]byte, 2)
 			if _, err := io.ReadFull(reader, bs); err != nil {
 				return err
@@ -1084,7 +1139,9 @@ func (t *SliceTestType) DecodeBinary(reader io.Reader) error {
 
 			ux := binary.LittleEndian.Uint16(bs)
 			(*t)[i] = uint16(ux)
+
 		}
+
 	}
 
 	return nil
@@ -1129,6 +1186,7 @@ func (t *ByteTestType) DecodeBinary(reader io.Reader) error {
 			return err
 		}
 		*t = ByteTestType(bs[0])
+
 	}
 
 	return nil
@@ -1179,6 +1237,7 @@ func (t *Uint16TestType) DecodeBinary(reader io.Reader) error {
 
 		ux := binary.LittleEndian.Uint16(bs)
 		*t = Uint16TestType(ux)
+
 	}
 
 	return nil
@@ -1229,6 +1288,7 @@ func (t *Uint32TestType) DecodeBinary(reader io.Reader) error {
 
 		ux := binary.LittleEndian.Uint32(bs)
 		*t = Uint32TestType(ux)
+
 	}
 
 	return nil
@@ -1279,6 +1339,7 @@ func (t *Uint64TestType) DecodeBinary(reader io.Reader) error {
 
 		ux := binary.LittleEndian.Uint64(bs)
 		*t = Uint64TestType(ux)
+
 	}
 
 	return nil
@@ -1329,6 +1390,7 @@ func (t *UintTestType) DecodeBinary(reader io.Reader) error {
 
 		ux := binary.LittleEndian.Uint64(bs)
 		*t = UintTestType(ux)
+
 	}
 
 	return nil
@@ -1385,6 +1447,7 @@ func (t *Int8TestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 		*t = Int8TestType(x)
+
 	}
 
 	return nil
@@ -1443,6 +1506,7 @@ func (t *Int16TestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 		*t = Int16TestType(x)
+
 	}
 
 	return nil
@@ -1501,6 +1565,7 @@ func (t *Int32TestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 		*t = Int32TestType(x)
+
 	}
 
 	return nil
@@ -1559,6 +1624,7 @@ func (t *Int64TestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 		*t = Int64TestType(x)
+
 	}
 
 	return nil
@@ -1617,6 +1683,7 @@ func (t *IntTestType) DecodeBinary(reader io.Reader) error {
 			x = ^x
 		}
 		*t = IntTestType(x)
+
 	}
 
 	return nil
@@ -1667,6 +1734,7 @@ func (t *UintptrTestType) DecodeBinary(reader io.Reader) error {
 
 		ux := binary.LittleEndian.Uint64(bs)
 		*t = UintptrTestType(ux)
+
 	}
 
 	return nil
@@ -1715,6 +1783,7 @@ func (t *Float32TestType) DecodeBinary(reader io.Reader) error {
 		}
 		ux := binary.LittleEndian.Uint32(bs)
 		*t = Float32TestType(math.Float32frombits(ux))
+
 	}
 
 	return nil
@@ -1763,6 +1832,7 @@ func (t *Float64TestType) DecodeBinary(reader io.Reader) error {
 		}
 		ux := binary.LittleEndian.Uint64(bs)
 		*t = Float64TestType(math.Float64frombits(ux))
+
 	}
 
 	return nil
@@ -1815,23 +1885,26 @@ func (t *StringTestType) DecodeBinaryFromBytes(data []byte) error {
 func (t *StringTestType) DecodeBinary(reader io.Reader) error {
 
 	{
-		var sz = make([]byte, 8)
-		if _, err := io.ReadFull(reader, sz); err != nil {
+		var bs = make([]byte, 8)
+		if _, err := io.ReadFull(reader, bs); err != nil {
 			return err
 		}
 
-		ux := binary.LittleEndian.Uint64(sz)
+		ux := binary.LittleEndian.Uint64(bs)
 		x := int64(ux >> 1)
 		if ux&1 != 0 {
 			x = ^x
 		}
 
-		b := make([]byte, int(x))
+		sz := int(x)
+
+		b := make([]byte, sz)
 		if _, err := io.ReadFull(reader, b); err != nil {
 			return err
 		}
 
 		*t = StringTestType(b)
+
 	}
 
 	return nil
@@ -1884,23 +1957,26 @@ func (t *BytesTestType) DecodeBinaryFromBytes(data []byte) error {
 func (t *BytesTestType) DecodeBinary(reader io.Reader) error {
 
 	{
-		var sz = make([]byte, 8)
-		if _, err := io.ReadFull(reader, sz); err != nil {
+		var bs = make([]byte, 8)
+		if _, err := io.ReadFull(reader, bs); err != nil {
 			return err
 		}
 
-		ux := binary.LittleEndian.Uint64(sz)
+		ux := binary.LittleEndian.Uint64(bs)
 		x := int64(ux >> 1)
 		if ux&1 != 0 {
 			x = ^x
 		}
 
-		b := make([]byte, int(x))
+		sz := int(x)
+
+		b := make([]byte, sz)
 		if _, err := io.ReadFull(reader, b); err != nil {
 			return err
 		}
 
 		*t = BytesTestType(b)
+
 	}
 
 	return nil
@@ -1951,6 +2027,3574 @@ func (t *BoolTestType) DecodeBinary(reader io.Reader) error {
 		}
 
 		*t = BoolTestType(v[0] == 1)
+
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t AlphaTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t AlphaTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *AlphaTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *AlphaTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			for _, ru := range t.S {
+				if !unicode.IsLetter(ru) {
+					return fmt.Errorf("field '%v' contains non alpha characters", "S")
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t AlphanumTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t AlphanumTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *AlphanumTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *AlphanumTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			for _, ru := range t.S {
+				if !unicode.IsLetter(ru) && !unicode.IsDigit(ru) {
+					return fmt.Errorf("field '%v' contains non alphanumeric characters", "S")
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t NumericTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t NumericTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *NumericTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *NumericTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			for _, ru := range t.S {
+				if !unicode.IsDigit(ru) {
+					return fmt.Errorf("field '%v' contains non numeric characters", "S")
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t HexadecimalTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t HexadecimalTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *HexadecimalTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *HexadecimalTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !hexadecimalConstraintRegex.MatchString(t.S) {
+				return fmt.Errorf("field '%v' is not a valid hexadecimal string", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t EmailTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t EmailTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *EmailTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *EmailTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !emailConstraintRegex.MatchString(t.S) {
+				return fmt.Errorf("field '%v' is not a valid email", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t URLTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t URLTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *URLTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *URLTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if url, err := url.ParseRequestURI(t.S); err != nil || url.Scheme == "" {
+				return fmt.Errorf("field '%v' is not a valid URL", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t Base64TestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t Base64TestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *Base64TestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *Base64TestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !base64ConstraintRegex.MatchString(t.S) {
+				return fmt.Errorf("field '%v' is not a valid base64 string", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t ContainsTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t ContainsTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *ContainsTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *ContainsTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !strings.Contains(t.S, "worl") {
+				return fmt.Errorf("field '%v' does not contain '%v'", "S", "worl")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t StartsWithTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t StartsWithTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *StartsWithTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *StartsWithTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !strings.HasPrefix(t.S, "Hello") {
+				return fmt.Errorf("field '%v' does not start with '%v'", "S", "Hello")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t EndsWithTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t EndsWithTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *EndsWithTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *EndsWithTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !strings.HasSuffix(t.S, "world") {
+				return fmt.Errorf("field '%v' does not end with '%v'", "S", "world")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t EqTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t EqTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			if _, err := writer.Write([]byte{byte(t.Uint8)}); err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int8(t.Int8)
+			ux := byte(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			_, err := writer.Write([]byte{ux})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint16(t.Uint16)
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int16(t.Int16)
+			ux := uint16(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint32(t.Uint32)
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int32(t.Int32)
+			ux := uint32(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uint64)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int64
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Uint
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, uint64(x))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uintptr)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			v := t.String
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			var v byte
+			if t.Bool {
+				v = 1
+			}
+			_, err := writer.Write([]byte{v})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, math.Float32bits(float32(t.Float32)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, math.Float64bits(float64(t.Float64)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *EqTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *EqTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			t.Uint8 = uint8(bs[0])
+
+			if t.Uint8 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uint8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := bs[0]
+			x := int8(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int8 = int8(x)
+
+			if t.Int8 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Int8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			t.Uint16 = uint16(ux)
+
+			if t.Uint16 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uint16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			x := int16(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int16 = int16(x)
+
+			if t.Int16 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Int16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Uint32 = uint32(ux)
+
+			if t.Uint32 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uint32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			x := int32(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int32 = int32(x)
+
+			if t.Int32 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Int32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint64 = uint64(ux)
+
+			if t.Uint64 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uint64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int64 = int64(x)
+
+			if t.Int64 != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Int64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint = uint(ux)
+
+			if t.Uint != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uint", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int = int(x)
+
+			if t.Int != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Int", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uintptr = uintptr(ux)
+
+			if t.Uintptr != 6 {
+				return fmt.Errorf("field '%v' does not equal %v", "Uintptr", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.String = string(b)
+
+			if t.String != "hello" {
+				return fmt.Errorf("field '%v' does not equal %v", "String", "hello")
+			}
+		}
+
+		{
+			var v = make([]byte, 1)
+			if _, err := io.ReadFull(reader, v); err != nil {
+				return err
+			}
+
+			t.Bool = bool(v[0] == 1)
+
+			if t.Bool != true {
+				return fmt.Errorf("field '%v' does not equal %v", "Bool", true)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Float32 = float32(math.Float32frombits(ux))
+
+			if t.Float32 != 3.14 {
+				return fmt.Errorf("field '%v' does not equal %v", "Float32", 3.14)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Float64 = float64(math.Float64frombits(ux))
+
+			if t.Float64 != 3.14 {
+				return fmt.Errorf("field '%v' does not equal %v", "Float64", 3.14)
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t NeqTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t NeqTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			if _, err := writer.Write([]byte{byte(t.Uint8)}); err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int8(t.Int8)
+			ux := byte(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			_, err := writer.Write([]byte{ux})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint16(t.Uint16)
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int16(t.Int16)
+			ux := uint16(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint32(t.Uint32)
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int32(t.Int32)
+			ux := uint32(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uint64)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int64
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Uint
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, uint64(x))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uintptr)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			v := t.String
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			var v byte
+			if t.Bool {
+				v = 1
+			}
+			_, err := writer.Write([]byte{v})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, math.Float32bits(float32(t.Float32)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, math.Float64bits(float64(t.Float64)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *NeqTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *NeqTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			t.Uint8 = uint8(bs[0])
+
+			if t.Uint8 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uint8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := bs[0]
+			x := int8(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int8 = int8(x)
+
+			if t.Int8 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Int8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			t.Uint16 = uint16(ux)
+
+			if t.Uint16 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uint16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			x := int16(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int16 = int16(x)
+
+			if t.Int16 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Int16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Uint32 = uint32(ux)
+
+			if t.Uint32 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uint32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			x := int32(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int32 = int32(x)
+
+			if t.Int32 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Int32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint64 = uint64(ux)
+
+			if t.Uint64 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uint64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int64 = int64(x)
+
+			if t.Int64 == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Int64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint = uint(ux)
+
+			if t.Uint == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uint", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int = int(x)
+
+			if t.Int == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Int", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uintptr = uintptr(ux)
+
+			if t.Uintptr == 6 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Uintptr", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.String = string(b)
+
+			if t.String == "hello" {
+				return fmt.Errorf("field '%v' should not be equal to %v", "String", "hello")
+			}
+		}
+
+		{
+			var v = make([]byte, 1)
+			if _, err := io.ReadFull(reader, v); err != nil {
+				return err
+			}
+
+			t.Bool = bool(v[0] == 1)
+
+			if t.Bool == true {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Bool", true)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Float32 = float32(math.Float32frombits(ux))
+
+			if t.Float32 == 3.14 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Float32", 3.14)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Float64 = float64(math.Float64frombits(ux))
+
+			if t.Float64 == 3.14 {
+				return fmt.Errorf("field '%v' should not be equal to %v", "Float64", 3.14)
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t UUIDTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t UUIDTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *UUIDTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *UUIDTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if !uuidConstraintRegex.MatchString(t.S) {
+				return fmt.Errorf("field '%v' is not a valid UUID", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t IPTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t IPTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *IPTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *IPTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if net.ParseIP(t.S) == nil {
+				return fmt.Errorf("field '%v' is not a valid IP address", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t IPv4TestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t IPv4TestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *IPv4TestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *IPv4TestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if ip := net.ParseIP(t.S); ip == nil || ip.To4() == nil {
+				return fmt.Errorf("field '%v' is not a valid IPv4", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t IPv6TestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t IPv6TestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.S
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *IPv6TestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *IPv6TestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.S = string(b)
+
+			if ip := net.ParseIP(t.S); ip == nil || ip.To4() != nil {
+				return fmt.Errorf("field '%v' is not a valid IPv6", "S")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t OneOfTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t OneOfTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			if _, err := writer.Write([]byte{byte(t.Uint8)}); err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int8(t.Int8)
+			ux := byte(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			_, err := writer.Write([]byte{ux})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint16(t.Uint16)
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int16(t.Int16)
+			ux := uint16(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint32(t.Uint32)
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int32(t.Int32)
+			ux := uint32(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uint64)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int64
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Uint
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, uint64(x))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uintptr)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			v := t.String
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			var v byte
+			if t.Bool {
+				v = 1
+			}
+			_, err := writer.Write([]byte{v})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, math.Float32bits(float32(t.Float32)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, math.Float64bits(float64(t.Float64)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *OneOfTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *OneOfTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			t.Uint8 = uint8(bs[0])
+
+			if t.Uint8 != 6 && t.Uint8 != 2 && t.Uint8 != 3 {
+				return fmt.Errorf("field 'Uint8' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := bs[0]
+			x := int8(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int8 = int8(x)
+
+			if t.Int8 != 6 && t.Int8 != 2 && t.Int8 != 3 {
+				return fmt.Errorf("field 'Int8' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			t.Uint16 = uint16(ux)
+
+			if t.Uint16 != 6 && t.Uint16 != 2 && t.Uint16 != 3 {
+				return fmt.Errorf("field 'Uint16' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			x := int16(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int16 = int16(x)
+
+			if t.Int16 != 6 && t.Int16 != 2 && t.Int16 != 3 {
+				return fmt.Errorf("field 'Int16' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Uint32 = uint32(ux)
+
+			if t.Uint32 != 6 && t.Uint32 != 2 && t.Uint32 != 3 {
+				return fmt.Errorf("field 'Uint32' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			x := int32(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int32 = int32(x)
+
+			if t.Int32 != 6 && t.Int32 != 2 && t.Int32 != 3 {
+				return fmt.Errorf("field 'Int32' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint64 = uint64(ux)
+
+			if t.Uint64 != 6 && t.Uint64 != 2 && t.Uint64 != 3 {
+				return fmt.Errorf("field 'Uint64' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int64 = int64(x)
+
+			if t.Int64 != 6 && t.Int64 != 2 && t.Int64 != 3 {
+				return fmt.Errorf("field 'Int64' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint = uint(ux)
+
+			if t.Uint != 6 && t.Uint != 2 && t.Uint != 3 {
+				return fmt.Errorf("field 'Uint' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int = int(x)
+
+			if t.Int != 6 && t.Int != 2 && t.Int != 3 {
+				return fmt.Errorf("field 'Int' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uintptr = uintptr(ux)
+
+			if t.Uintptr != 6 && t.Uintptr != 2 && t.Uintptr != 3 {
+				return fmt.Errorf("field 'Uintptr' should have one of these values: %s", "6, 2, 3")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.String = string(b)
+
+			if t.String != "hello" && t.String != "world" && t.String != "foo" {
+				return fmt.Errorf("field 'String' should have one of these values: %s", "\"hello\", \"world\", \"foo\"")
+			}
+		}
+
+		{
+			var v = make([]byte, 1)
+			if _, err := io.ReadFull(reader, v); err != nil {
+				return err
+			}
+
+			t.Bool = bool(v[0] == 1)
+
+			if t.Bool != true {
+				return fmt.Errorf("field 'Bool' should have one of these values: %s", "true")
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Float32 = float32(math.Float32frombits(ux))
+
+			if t.Float32 != 3.14 && t.Float32 != 1.1 && t.Float32 != 2.2 {
+				return fmt.Errorf("field 'Float32' should have one of these values: %s", "3.14, 1.1, 2.2")
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Float64 = float64(math.Float64frombits(ux))
+
+			if t.Float64 != 3.14 && t.Float64 != 1.1 && t.Float64 != 2.2 {
+				return fmt.Errorf("field 'Float64' should have one of these values: %s", "3.14, 1.1, 2.2")
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t MaxTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t MaxTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			if _, err := writer.Write([]byte{byte(t.Uint8)}); err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int8(t.Int8)
+			ux := byte(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			_, err := writer.Write([]byte{ux})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint16(t.Uint16)
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int16(t.Int16)
+			ux := uint16(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint32(t.Uint32)
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int32(t.Int32)
+			ux := uint32(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uint64)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int64
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Uint
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, uint64(x))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uintptr)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, math.Float32bits(float32(t.Float32)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, math.Float64bits(float64(t.Float64)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *MaxTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *MaxTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			t.Uint8 = uint8(bs[0])
+
+			if t.Uint8 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uint8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := bs[0]
+			x := int8(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int8 = int8(x)
+
+			if t.Int8 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Int8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			t.Uint16 = uint16(ux)
+
+			if t.Uint16 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uint16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			x := int16(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int16 = int16(x)
+
+			if t.Int16 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Int16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Uint32 = uint32(ux)
+
+			if t.Uint32 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uint32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			x := int32(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int32 = int32(x)
+
+			if t.Int32 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Int32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint64 = uint64(ux)
+
+			if t.Uint64 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uint64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int64 = int64(x)
+
+			if t.Int64 > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Int64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint = uint(ux)
+
+			if t.Uint > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uint", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int = int(x)
+
+			if t.Int > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Int", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uintptr = uintptr(ux)
+
+			if t.Uintptr > 6 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Uintptr", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Float32 = float32(math.Float32frombits(ux))
+
+			if t.Float32 > 3.14 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Float32", 3.14)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Float64 = float64(math.Float64frombits(ux))
+
+			if t.Float64 > 3.14 {
+				return fmt.Errorf("field '%v' has a maximum value of %v", "Float64", 3.14)
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t MinTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t MinTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			if _, err := writer.Write([]byte{byte(t.Uint8)}); err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int8(t.Int8)
+			ux := byte(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			_, err := writer.Write([]byte{ux})
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint16(t.Uint16)
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int16(t.Int16)
+			ux := uint16(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 2)
+			binary.LittleEndian.PutUint16(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint32(t.Uint32)
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := int32(t.Int32)
+			ux := uint32(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uint64)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int64
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Uint
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, uint64(x))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := t.Int
+			ux := uint64(x) << 1
+			if x < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			x := uint64(t.Uintptr)
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, x)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 4)
+			binary.LittleEndian.PutUint32(bs, math.Float32bits(float32(t.Float32)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, math.Float64bits(float64(t.Float64)))
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *MinTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *MinTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			t.Uint8 = uint8(bs[0])
+
+			if t.Uint8 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uint8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 1)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := bs[0]
+			x := int8(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int8 = int8(x)
+
+			if t.Int8 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Int8", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			t.Uint16 = uint16(ux)
+
+			if t.Uint16 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uint16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 2)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint16(bs)
+			x := int16(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int16 = int16(x)
+
+			if t.Int16 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Int16", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Uint32 = uint32(ux)
+
+			if t.Uint32 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uint32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint32(bs)
+			x := int32(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int32 = int32(x)
+
+			if t.Int32 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Int32", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint64 = uint64(ux)
+
+			if t.Uint64 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uint64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int64 = int64(x)
+
+			if t.Int64 < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Int64", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uint = uint(ux)
+
+			if t.Uint < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uint", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+			t.Int = int(x)
+
+			if t.Int < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Int", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Uintptr = uintptr(ux)
+
+			if t.Uintptr < 6 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Uintptr", 6)
+			}
+		}
+
+		{
+			var bs = make([]byte, 4)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint32(bs)
+			t.Float32 = float32(math.Float32frombits(ux))
+
+			if t.Float32 < 3.14 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Float32", 3.14)
+			}
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+			ux := binary.LittleEndian.Uint64(bs)
+			t.Float64 = float64(math.Float64frombits(ux))
+
+			if t.Float64 < 3.14 {
+				return fmt.Errorf("field '%v' has a minimum value of %v", "Float64", 3.14)
+			}
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t MaxLenTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t MaxLenTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.String
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			v := t.Bytes
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			len := len(t.Slice)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+
+			for i := 0; i < len; i++ {
+				x := t.Slice[i]
+				ux := uint64(x) << 1
+				if x < 0 {
+					ux = ^ux
+				}
+				bs := make([]byte, 8)
+				binary.LittleEndian.PutUint64(bs, ux)
+				_, err := writer.Write(bs)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *MaxLenTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *MaxLenTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+			if sz > 5 {
+				return fmt.Errorf("field '%v' has a maximum length of %v", "String", 5)
+			}
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.String = string(b)
+
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+			if sz > 5 {
+				return fmt.Errorf("field '%v' has a maximum length of %v", "Bytes", 5)
+			}
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.Bytes = []byte(b)
+
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			if sz > 5 {
+				return fmt.Errorf("field '%v' has a maximum length of %v", "Slice", 5)
+			}
+
+			t.Slice = make([]int, sz)
+
+			for i := 0; i < sz; i++ {
+				var bs = make([]byte, 8)
+				if _, err := io.ReadFull(reader, bs); err != nil {
+					return err
+				}
+
+				ux := binary.LittleEndian.Uint64(bs)
+				x := int64(ux >> 1)
+				if ux&1 != 0 {
+					x = ^x
+				}
+				(t.Slice)[i] = int(x)
+
+			}
+
+		}
+	}
+
+	return nil
+}
+
+// EncodeBinary returns a binary-encoded representation of the type.
+func (t MinLenTestType) EncodeBinary() ([]byte, error) {
+	var writer = bytes.NewBuffer(nil)
+	if err := t.WriteBinary(writer); err != nil {
+		return nil, err
+	}
+	return writer.Bytes(), nil
+}
+
+// WriteBinary writes the binary-encoded representation of the type to the
+// given writer.
+func (t MinLenTestType) WriteBinary(writer io.Writer) error {
+	{
+
+		{
+			v := t.String
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			v := t.Bytes
+			len := len(v)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			sz := make([]byte, 8)
+			binary.LittleEndian.PutUint64(sz, ux)
+			if _, err := writer.Write(sz); err != nil {
+				return err
+			}
+
+			_, err := writer.Write([]byte(v))
+			if err != nil {
+				return err
+			}
+		}
+
+		{
+			len := len(t.Slice)
+			ux := uint64(len) << 1
+			if len < 0 {
+				ux = ^ux
+			}
+			bs := make([]byte, 8)
+			binary.LittleEndian.PutUint64(bs, ux)
+			_, err := writer.Write(bs)
+			if err != nil {
+				return err
+			}
+
+			for i := 0; i < len; i++ {
+				x := t.Slice[i]
+				ux := uint64(x) << 1
+				if x < 0 {
+					ux = ^ux
+				}
+				bs := make([]byte, 8)
+				binary.LittleEndian.PutUint64(bs, ux)
+				_, err := writer.Write(bs)
+				if err != nil {
+					return err
+				}
+			}
+		}
+	}
+
+	return nil
+}
+
+// DecodeBinaryFromBytes fills the type with the given binary-encoded
+// representation of the type.
+func (t *MinLenTestType) DecodeBinaryFromBytes(data []byte) error {
+	var reader = bytes.NewReader(data)
+	return t.DecodeBinary(reader)
+}
+
+// DecodeBinary reads the binary representation of the type from the given
+// reader and fulls the type with it.
+func (t *MinLenTestType) DecodeBinary(reader io.Reader) error {
+	{
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+			if sz < 5 {
+				return fmt.Errorf("field '%v' has a minimum length of %v", "String", 5)
+			}
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.String = string(b)
+
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+			if sz < 5 {
+				return fmt.Errorf("field '%v' has a minimum length of %v", "Bytes", 5)
+			}
+
+			b := make([]byte, sz)
+			if _, err := io.ReadFull(reader, b); err != nil {
+				return err
+			}
+
+			t.Bytes = []byte(b)
+
+		}
+
+		{
+			var bs = make([]byte, 8)
+			if _, err := io.ReadFull(reader, bs); err != nil {
+				return err
+			}
+
+			ux := binary.LittleEndian.Uint64(bs)
+			x := int64(ux >> 1)
+			if ux&1 != 0 {
+				x = ^x
+			}
+
+			sz := int(x)
+
+			if sz < 5 {
+				return fmt.Errorf("field '%v' has a minimum length of %v", "Slice", 5)
+			}
+
+			t.Slice = make([]int, sz)
+
+			for i := 0; i < sz; i++ {
+				var bs = make([]byte, 8)
+				if _, err := io.ReadFull(reader, bs); err != nil {
+					return err
+				}
+
+				ux := binary.LittleEndian.Uint64(bs)
+				x := int64(ux >> 1)
+				if ux&1 != 0 {
+					x = ^x
+				}
+				(t.Slice)[i] = int(x)
+
+			}
+
+		}
 	}
 
 	return nil

@@ -16,7 +16,7 @@ type Type interface {
 	// struct field the data will be decoded into.
 	// If root is true, it means the decoder is being generated for a recv
 	// itself.
-	Decoder(recv string, root bool) string
+	Decoder(recv string, root bool, constraints ...Constraint) string
 	// Encoder generates an encoder for the type. recv is the variable or
 	// struct field that will be encoded.
 	Encoder(recv string) string
@@ -103,39 +103,40 @@ func (t Basic) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Basic) Decoder(recv string, root bool) string {
+func (t Basic) Decoder(recv string, root bool, constraints ...Constraint) string {
 	prefix := recvPrefix(root)
+	bcs, acs := constraintsForTpl(constraints, recv)
 	switch t.Kind {
 	case types.String:
-		return fmt.Sprintf(readString, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readString, t.TypeName, recv, prefix, bcs, acs)
 	case types.Bool:
-		return fmt.Sprintf(readBool, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readBool, t.TypeName, recv, prefix, bcs, acs)
 	case types.Int:
-		return fmt.Sprintf(readInt, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readInt, t.TypeName, recv, prefix, bcs, acs)
 	case types.Int8:
-		return fmt.Sprintf(readInt8, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readInt8, t.TypeName, recv, prefix, bcs, acs)
 	case types.Int16:
-		return fmt.Sprintf(readInt16, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readInt16, t.TypeName, recv, prefix, bcs, acs)
 	case types.Int32:
-		return fmt.Sprintf(readInt32, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readInt32, t.TypeName, recv, prefix, bcs, acs)
 	case types.Int64:
-		return fmt.Sprintf(readInt64, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readInt64, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uint:
-		return fmt.Sprintf(readUint, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readUint, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uint8:
-		return fmt.Sprintf(readByte, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readByte, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uint16:
-		return fmt.Sprintf(readUint16, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readUint16, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uint32:
-		return fmt.Sprintf(readUint32, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readUint32, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uint64:
-		return fmt.Sprintf(readUint64, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readUint64, t.TypeName, recv, prefix, bcs, acs)
 	case types.Uintptr:
-		return fmt.Sprintf(readUintptr, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readUintptr, t.TypeName, recv, prefix, bcs, acs)
 	case types.Float32:
-		return fmt.Sprintf(readFloat32, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readFloat32, t.TypeName, recv, prefix, bcs, acs)
 	case types.Float64:
-		return fmt.Sprintf(readFloat64, t.TypeName, recv, prefix)
+		return fmt.Sprintf(readFloat64, t.TypeName, recv, prefix, bcs, acs)
 	default:
 		return ""
 	}
@@ -167,8 +168,9 @@ func (t Maybe) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Maybe) Decoder(recv string, root bool) string {
+func (t Maybe) Decoder(recv string, root bool, constraints ...Constraint) string {
 	tmpIdent := tmpIdent(recv)
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
 	return fmt.Sprintf(`
 {
 	var v = make([]byte, 1)
@@ -184,7 +186,14 @@ func (t Maybe) Decoder(recv string, root bool) string {
 		%[2]s = &%[1]s
 	}
 }
-`, tmpIdent, recv, t.ElemType, t.Elem.Decoder(tmpIdent, false))
+`,
+		tmpIdent,
+		recv,
+		t.ElemType,
+		t.Elem.Decoder(tmpIdent, false),
+		beforecs,
+		aftercs,
+	)
 }
 
 // Slice type.
@@ -215,7 +224,8 @@ func (t Slice) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Slice) Decoder(recv string, root bool) string {
+func (t Slice) Decoder(recv string, root bool, constraints ...Constraint) string {
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
 	return fmt.Sprintf(`
 {
 	var bs = make([]byte, 8)
@@ -229,11 +239,15 @@ func (t Slice) Decoder(recv string, root bool) string {
 		x = ^x
 	}
 
-	len := int(x)
+	sz := int(x)
 
-	%[1]s%[2]s = make(%[3]s, len)
+	%[5]s
 
-	for i := 0; i < len; i++ %[4]s
+	%[1]s%[2]s = make(%[3]s, sz)
+
+	for i := 0; i < sz; i++ %[4]s
+
+	%[6]s
 }
 `,
 		recvPrefix(root),
@@ -243,6 +257,8 @@ func (t Slice) Decoder(recv string, root bool) string {
 			fmt.Sprintf("(%s%s)[i]", recvPrefix(root), recv),
 			false,
 		)),
+		beforecs,
+		aftercs,
 	)
 }
 
@@ -262,15 +278,22 @@ func (t Array) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Array) Decoder(recv string, root bool) string {
+func (t Array) Decoder(recv string, root bool, constraints ...Constraint) string {
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
 	return fmt.Sprintf(`
 {
 	for i := 0; i < %d; i++ %s
+	%s
+	%s
 }
-`, t.Len, strings.TrimSpace(t.Elem.Decoder(
-		fmt.Sprintf("(%s%s)[i]", recvPrefix(root), recv),
-		false,
-	)))
+`,
+		t.Len,
+		strings.TrimSpace(t.Elem.Decoder(
+			fmt.Sprintf("(%s%s)[i]", recvPrefix(root), recv),
+			false,
+		)),
+		beforecs, aftercs,
+	)
 }
 
 // Map type.
@@ -305,7 +328,8 @@ func (t Map) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Map) Decoder(recv string, root bool) string {
+func (t Map) Decoder(recv string, root bool, constraints ...Constraint) string {
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
 	return fmt.Sprintf(`
 {
 	var bs = make([]byte, 8)
@@ -319,17 +343,21 @@ func (t Map) Decoder(recv string, root bool) string {
 		x = ^x
 	}
 
-	len := int(x)
+	sz := int(x)
 
-	%[7]s%[1]s = make(%[2]s, len)
+	%[8]s
 
-	for i := 0; i < len; i++ {
+	%[7]s%[1]s = make(%[2]s, sz)
+
+	for i := 0; i < sz; i++ {
 		var key %[3]s
 		var value %[4]s
 		%[5]s
 		%[6]s
 		(%[7]s%[1]s)[key] = value
 	}
+
+	%[9]s
 }
 `,
 		recv,
@@ -339,6 +367,8 @@ func (t Map) Decoder(recv string, root bool) string {
 		t.Key.Decoder("key", false),
 		t.Elem.Decoder("value", false),
 		recvPrefix(root),
+		beforecs,
+		aftercs,
 	)
 }
 
@@ -359,21 +389,24 @@ func (t Struct) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Struct) Decoder(recv string, root bool) string {
+func (t Struct) Decoder(recv string, root bool, constraints ...Constraint) string {
 	var buf bytes.Buffer
 	buf.WriteString("{\n")
 	for _, f := range t.Fields {
-		buf.WriteString(f.Type.Decoder(recv+"."+f.Name, false))
+		buf.WriteString(f.Type.Decoder(recv+"."+f.Name, false, f.Constraints...))
 	}
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
+	buf.WriteString(beforecs)
+	buf.WriteString(aftercs)
 	buf.WriteString("}\n")
 	return buf.String()
 }
 
 // StructField is a field in a struct.
 type StructField struct {
-	Name string
-	Type Type
-	// TODO: Validations
+	Name        string
+	Type        Type
+	Constraints []Constraint
 }
 
 // Bytes is a special type for []byte.
@@ -387,8 +420,16 @@ func (t Bytes) Encoder(recv string) string {
 }
 
 // Decoder implements the Type interface.
-func (t Bytes) Decoder(recv string, root bool) string {
-	return fmt.Sprintf(readBytes, recv, t.TypeName, recvPrefix(root))
+func (t Bytes) Decoder(recv string, root bool, constraints ...Constraint) string {
+	beforecs, aftercs := constraintsForTpl(constraints, recv)
+	return fmt.Sprintf(
+		readBytes,
+		recv,
+		t.TypeName,
+		recvPrefix(root),
+		beforecs,
+		aftercs,
+	)
 }
 
 func typeName(ctx *parseContext, typ types.Type) string {
@@ -414,18 +455,22 @@ func typeName(ctx *parseContext, typ types.Type) string {
 
 type parseContext struct {
 	imports map[string]struct{}
+	decls   map[string]struct{}
 	seen    []string
 }
 
 func newParseContext() *parseContext {
-	return &parseContext{make(map[string]struct{}), nil}
+	return &parseContext{
+		imports: make(map[string]struct{}),
+		decls:   make(map[string]struct{}),
+	}
 }
 
 func (ctx *parseContext) clone() *parseContext {
 	seen := make([]string, len(ctx.seen))
 	copy(seen, ctx.seen)
 
-	return &parseContext{ctx.imports, seen}
+	return &parseContext{ctx.imports, ctx.decls, seen}
 }
 
 func (ctx *parseContext) markSeen(typ types.Type) {
@@ -447,9 +492,23 @@ func (ctx *parseContext) addImport(pkg string) {
 	ctx.imports[pkg] = struct{}{}
 }
 
+func (ctx *parseContext) addDecl(decl string) {
+	ctx.decls[decl] = struct{}{}
+}
+
 func (ctx *parseContext) getImports() []string {
 	var result []string
 	for i := range ctx.imports {
+		result = append(result, i)
+	}
+
+	sort.Strings(result)
+	return result
+}
+
+func (ctx *parseContext) getDecls() []string {
+	var result []string
+	for i := range ctx.decls {
 		result = append(result, i)
 	}
 
@@ -579,30 +638,75 @@ func parseStruct(ctx *parseContext, t *types.Struct) (Type, error) {
 			return nil, fmt.Errorf("on field %s: %s", f.Name(), err)
 		}
 
-		s.Fields = append(s.Fields, StructField{f.Name(), ft})
+		var cs = make([]string, 0, len(cfg.constraints))
+		for name := range cfg.constraints {
+			cs = append(cs, name)
+		}
+		sort.Strings(cs)
+
+		var constraints = make([]Constraint, len(cs))
+		for i, name := range cs {
+			c, err := parseConstraint(ctx, name, cfg.constraints[name], f.Name(), ft)
+			if err != nil {
+				return nil, fmt.Errorf(
+					"on constraint %q of field %q: %s",
+					name, f.Name(), err,
+				)
+			}
+			constraints[i] = c
+		}
+
+		s.Fields = append(s.Fields, StructField{f.Name(), ft, constraints})
 	}
 	return s, nil
 }
 
 type fieldConfig struct {
-	ignore bool
-	// TODO: validations
+	ignore      bool
+	constraints map[string]string
 }
 
 func parseTag(tag string) (*fieldConfig, error) {
+	cfg := fieldConfig{constraints: make(map[string]string)}
 	tag = reflect.StructTag(tag).Get("bindec")
+	if tag == "" {
+		return &cfg, nil
+	}
+
 	var tags []string
 	for _, p := range strings.Split(tag, ",") {
 		tags = append(tags, strings.TrimSpace(p))
 	}
 
-	var cfg fieldConfig
 	for _, t := range tags {
 		if t == "-" {
 			cfg.ignore = true
+			continue
 		}
 
-		// TODO: parse validations
+		parts := strings.Split(t, "=")
+		if len(parts) > 2 {
+			return nil, fmt.Errorf("invalid format for constraint in struct tag: %q", t)
+		}
+
+		c := parts[0]
+		argsRequired, ok := constraints[c]
+		if !ok {
+			return nil, fmt.Errorf("constraint not found: %q", c)
+		}
+
+		if len(parts) == 1 && argsRequired {
+			return nil, fmt.Errorf("constraint %q requires arguments", c)
+		} else if len(parts) == 2 && !argsRequired {
+			return nil, fmt.Errorf("constraint %q does not require arguments", c)
+		}
+
+		var args string
+		if len(parts) == 2 {
+			args = strings.TrimSpace(parts[1])
+		}
+
+		cfg.constraints[c] = args
 	}
 
 	return &cfg, nil

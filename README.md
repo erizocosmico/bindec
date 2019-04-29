@@ -149,10 +149,6 @@ In a future version, `bindec` will support adding validations to the fields duri
 
 For more details about the format used to encode the types, see [SPEC.md](/SPEC.md).
 
-### Roadmap
-
-- [ ] Add validations and constraints via struct tags.
-
 ### LICENSE
 
 MIT License, see [LICENSE](/LICENSE)
