@@ -2,8 +2,6 @@
 
 `bindec` generates encoders and decoders to encode and decode binary representations of types. Encoders and decoders are code-generated, thus generating code tailored specifically for your type, making encoding and decoding really fast.
 
-**Project status:** this project is still in a very early stage and lacks extensive testing. Use at your own risk.
-
 ### Install
 
 ```
@@ -148,6 +146,10 @@ In a future version, `bindec` will support adding validations to the fields duri
 ### Specification
 
 For more details about the format used to encode the types, see [SPEC.md](/SPEC.md).
+
+### Constraints
+
+TODO.
 
 ### LICENSE
 
